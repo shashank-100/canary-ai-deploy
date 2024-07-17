@@ -1,3 +1,5 @@
+# Drift Detection Module
+# Handles data drift detection for ML models
 """
 Data Drift Detection module for AI Model Serving Platform
 Monitors input data distribution shifts and model performance drift

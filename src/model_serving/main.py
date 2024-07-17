@@ -1,3 +1,5 @@
+# ModelServeAI - Main Model Serving Application
+# This file handles the core model serving functionality
 """
 Main FastAPI application for AI Model Serving Platform
 """

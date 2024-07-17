@@ -1,3 +1,5 @@
+# Kubernetes Deployment Configuration
+# Defines the deployment for ModelServeAI services
 apiVersion: apps/v1
 kind: Deployment
 metadata:
