@@ -1,0 +1,98 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: drift-detection-job
+  namespace: ai-models
+spec:
+  schedule: "0 */6 * * *"  # Run every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: drift-detection
+        spec:
+          serviceAccountName: model-serving-sa
+          restartPolicy: OnFailure
+          containers:
+          - name: drift-detector
+            image: your-ecr-repo/drift-detector:latest
+            env:
+            - name: MODELS_TO_CHECK
+              value: "bert-ner,resnet-classifier"
+            - name: DRIFT_THRESHOLD
+              value: "0.1"
+            - name: ALERT_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: model-serving-secrets
+                  key: ALERT_WEBHOOK_URL
+            envFrom:
+            - configMapRef:
+                name: model-serving-config
+            - secretRef:
+                name: model-serving-secrets
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+            volumeMounts:
+            - name: drift-detection-config
+              mountPath: /app/config
+              readOnly: true
+          volumes:
+          - name: drift-detection-config
+            configMap:
+              name: drift-detection-config
+          nodeSelector:
+            role: cpu-worker
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: drift-detection-config
+  namespace: ai-models
+data:
+  drift_config.yaml: |
+    models:
+      bert-ner:
+        input_features:
+          - text_length
+          - token_count
+          - special_chars_ratio
+        drift_methods:
+          - kolmogorov_smirnov
+          - population_stability_index
+        thresholds:
+          ks_threshold: 0.05
+          psi_threshold: 0.1
+        reference_window_days: 30
+        detection_window_days: 7
+      
+      resnet-classifier:
+        input_features:
+          - image_brightness
+          - image_contrast
+          - image_size
+          - color_distribution
+        drift_methods:
+          - wasserstein_distance
+          - maximum_mean_discrepancy
+        thresholds:
+          wasserstein_threshold: 0.1
+          mmd_threshold: 0.05
+        reference_window_days: 14
+        detection_window_days: 3
+    
+    alerts:
+      slack_webhook: true
+      email_notifications: true
+      prometheus_alerts: true
+    
+    storage:
+      reference_data_path: "s3://model-artifacts/reference-data/"
+      drift_reports_path: "s3://model-artifacts/drift-reports/"
+

@@ -1,0 +1,221 @@
+# ServiceMonitor for AI Model Serving Platform
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: model-servers
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  # Select services to monitor
+  selector:
+    matchLabels:
+      app: model-server
+  
+  # Namespaces to look for services
+  namespaceSelector:
+    matchNames:
+      - ai-models
+  
+  # Endpoints configuration
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+      
+      # Metric relabeling
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'model_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'http_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'process_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'python_.*'
+          action: keep
+      
+      # Target relabeling
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_model_name]
+          targetLabel: model_name
+        
+        - sourceLabels: [__meta_kubernetes_service_label_version]
+          targetLabel: version
+        
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        
+        - sourceLabels: [__meta_kubernetes_service_name]
+          targetLabel: service
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-proxy
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: istiod
+  
+  namespaceSelector:
+    matchNames:
+      - istio-system
+  
+  endpoints:
+    - port: http-monitoring
+      interval: 15s
+      path: /stats/prometheus
+      
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'istio_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'envoy_.*'
+          action: keep
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nginx-ingress
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+  
+  namespaceSelector:
+    matchNames:
+      - ingress-nginx
+  
+  endpoints:
+    - port: prometheus
+      interval: 30s
+      path: /metrics
+      
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'nginx_.*'
+          action: keep
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: model-pods
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  # Select pods to monitor
+  selector:
+    matchLabels:
+      app: model-server
+  
+  # Namespaces to look for pods
+  namespaceSelector:
+    matchNames:
+      - ai-models
+  
+  # Pod metrics endpoints
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+      
+      # Metric relabeling
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'model_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'container_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'process_.*'
+          action: keep
+      
+      # Target relabeling
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_model_name]
+          targetLabel: model_name
+        
+        - sourceLabels: [__meta_kubernetes_pod_label_version]
+          targetLabel: version
+        
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: drift-detector
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: drift-detector
+  
+  namespaceSelector:
+    matchNames:
+      - ai-models
+  
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 60s
+      path: /metrics
+      scheme: http
+      
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'drift_.*'
+          action: keep
+        
+        - sourceLabels: [__name__]
+          regex: 'model_drift_.*'
+          action: keep
+      
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_model_name]
+          targetLabel: model_name
+        
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+

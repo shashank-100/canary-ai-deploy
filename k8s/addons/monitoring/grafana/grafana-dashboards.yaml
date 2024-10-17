@@ -1,0 +1,466 @@
+# Grafana Dashboards for AI Model Serving Platform
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-serving-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  model-serving-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "AI Model Serving Overview",
+        "tags": ["ai", "models", "serving"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Model Request Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total[5m]))",
+                "legendFormat": "Requests/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 10},
+                    {"color": "red", "value": 50}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Model Error Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total{status=~\"5..\"}[5m])) / sum(rate(model_requests_total[5m])) * 100",
+                "legendFormat": "Error Rate %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 1},
+                    {"color": "red", "value": 5}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Model Latency P95",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(model_inference_duration_seconds_bucket[5m])) by (le))",
+                "legendFormat": "P95 Latency"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 1},
+                    {"color": "red", "value": 2}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Active Models",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "count(up{job=\"model-servers\"} == 1)",
+                "legendFormat": "Active Models"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": null},
+                    {"color": "yellow", "value": 1},
+                    {"color": "green", "value": 2}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+          },
+          {
+            "id": 5,
+            "title": "Request Rate by Model",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total[5m])) by (model_name)",
+                "legendFormat": "{{model_name}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "Latency Distribution",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "sum(rate(model_inference_duration_seconds_bucket[5m])) by (le)",
+                "format": "heatmap",
+                "legendFormat": "{{le}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 7,
+            "title": "Model Resource Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\".*model.*\"}[5m])) by (pod)",
+                "legendFormat": "CPU - {{pod}}"
+              },
+              {
+                "expr": "sum(container_memory_usage_bytes{pod=~\".*model.*\"}) by (pod) / 1024 / 1024 / 1024",
+                "legendFormat": "Memory GB - {{pod}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "CPU Cores / Memory GB",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+          }
+        ]
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-performance-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  model-performance.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Model Performance Analysis",
+        "tags": ["ai", "models", "performance"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-6h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Inference Time by Model",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(model_inference_duration_seconds_bucket[5m])) by (model_name, le))",
+                "legendFormat": "P50 - {{model_name}}"
+              },
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(model_inference_duration_seconds_bucket[5m])) by (model_name, le))",
+                "legendFormat": "P95 - {{model_name}}"
+              },
+              {
+                "expr": "histogram_quantile(0.99, sum(rate(model_inference_duration_seconds_bucket[5m])) by (model_name, le))",
+                "legendFormat": "P99 - {{model_name}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Throughput by Model",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total[5m])) by (model_name)",
+                "legendFormat": "{{model_name}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Error Rate by Model",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total{status=~\"5..\"}[5m])) by (model_name) / sum(rate(model_requests_total[5m])) by (model_name) * 100",
+                "legendFormat": "{{model_name}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Error Rate %",
+                "min": 0,
+                "max": 100
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Model Queue Length",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "model_queue_length",
+                "legendFormat": "{{model_name}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Queue Length",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "GPU Utilization",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "nvidia_gpu_utilization_gpu",
+                "legendFormat": "GPU {{gpu}} - {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "GPU Utilization %",
+                "min": 0,
+                "max": 100
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 6,
+            "title": "GPU Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes * 100",
+                "legendFormat": "GPU {{gpu}} - {{instance}}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Memory Usage %",
+                "min": 0,
+                "max": 100
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          }
+        ]
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: canary-deployment-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  canary-deployment.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Canary Deployment Monitoring",
+        "tags": ["canary", "deployment", "a/b-testing"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "10s",
+        "time": {
+          "from": "now-30m",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Traffic Split",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total{version=\"v1\"}[5m]))",
+                "legendFormat": "Production (v1)"
+              },
+              {
+                "expr": "sum(rate(model_requests_total{version=\"v2\"}[5m]))",
+                "legendFormat": "Canary (v2)"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Error Rate Comparison",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total{version=\"v1\", status=~\"5..\"}[5m])) / sum(rate(model_requests_total{version=\"v1\"}[5m])) * 100",
+                "legendFormat": "Production Error Rate"
+              },
+              {
+                "expr": "sum(rate(model_requests_total{version=\"v2\", status=~\"5..\"}[5m])) / sum(rate(model_requests_total{version=\"v2\"}[5m])) * 100",
+                "legendFormat": "Canary Error Rate"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Error Rate %",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Latency Comparison",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(model_inference_duration_seconds_bucket{version=\"v1\"}[5m])) by (le))",
+                "legendFormat": "Production P95"
+              },
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(model_inference_duration_seconds_bucket{version=\"v2\"}[5m])) by (le))",
+                "legendFormat": "Canary P95"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Latency (seconds)",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Request Rate by Version",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(model_requests_total{version=\"v1\"}[5m]))",
+                "legendFormat": "Production"
+              },
+              {
+                "expr": "sum(rate(model_requests_total{version=\"v2\"}[5m]))",
+                "legendFormat": "Canary"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Resource Usage Comparison",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\".*model.*v1.*\"}[5m]))",
+                "legendFormat": "Production CPU"
+              },
+              {
+                "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\".*model.*v2.*\"}[5m]))",
+                "legendFormat": "Canary CPU"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "CPU Cores",
+                "min": 0
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ]
+      }
+    }
+

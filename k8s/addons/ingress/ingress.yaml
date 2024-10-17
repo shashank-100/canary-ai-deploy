@@ -1,0 +1,128 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-models-ingress
+  namespace: ai-models
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Enable CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+spec:
+  tls:
+  - hosts:
+    - ai-models.example.com
+    - api.ai-models.example.com
+    secretName: ai-models-tls
+  rules:
+  - host: ai-models.example.com
+    http:
+      paths:
+      - path: /api/v1/bert-ner(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: bert-ner-model-service
+            port:
+              number: 8000
+      - path: /api/v1/resnet-classifier(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: resnet-classifier-model-service
+            port:
+              number: 8000
+      - path: /api/v2/bert-ner(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: bert-ner-model-service
+            port:
+              number: 8000
+      - path: /api/v2/resnet-classifier(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: resnet-classifier-model-service
+            port:
+              number: 8000
+  - host: api.ai-models.example.com
+    http:
+      paths:
+      - path: /v1/bert-ner
+        pathType: Prefix
+        backend:
+          service:
+            name: bert-ner-model-service
+            port:
+              number: 8000
+      - path: /v1/resnet-classifier
+        pathType: Prefix
+        backend:
+          service:
+            name: resnet-classifier-model-service
+            port:
+              number: 8000
+      - path: /v2/bert-ner
+        pathType: Prefix
+        backend:
+          service:
+            name: bert-ner-model-service
+            port:
+              number: 8000
+      - path: /v2/resnet-classifier
+        pathType: Prefix
+        backend:
+          service:
+            name: resnet-classifier-model-service
+            port:
+              number: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-models-metrics-ingress
+  namespace: ai-models
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Metrics'
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - metrics.ai-models.example.com
+    secretName: ai-models-metrics-tls
+  rules:
+  - host: metrics.ai-models.example.com
+    http:
+      paths:
+      - path: /bert-ner/metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: bert-ner-model-service
+            port:
+              number: 8080
+      - path: /resnet-classifier/metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: resnet-classifier-model-service
+            port:
+              number: 8080
+

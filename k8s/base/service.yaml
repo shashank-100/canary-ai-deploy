@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bert-ner-model-service
+  namespace: ai-models
+  labels:
+    app: bert-ner-model
+    service: bert-ner-model
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: metrics
+  selector:
+    app: bert-ner-model
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resnet-classifier-model-service
+  namespace: ai-models
+  labels:
+    app: resnet-classifier-model
+    service: resnet-classifier-model
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: metrics
+  selector:
+    app: resnet-classifier-model
+  type: ClusterIP
+

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-models
+  labels:
+    name: ai-models
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    name: istio-system
+

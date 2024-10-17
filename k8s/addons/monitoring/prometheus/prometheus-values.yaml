@@ -1,0 +1,310 @@
+# Prometheus Helm Chart Values for AI Model Serving Platform
+
+# Global configuration
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Prometheus server configuration
+prometheus:
+  prometheusSpec:
+    # Resource requests and limits
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1000m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
+    
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    
+    # Retention policy
+    retention: 30d
+    retentionSize: 45GB
+    
+    # External labels
+    externalLabels:
+      cluster: ai-model-serving
+      environment: dev
+    
+    # Additional scrape configs
+    additionalScrapeConfigs:
+      - job_name: 'model-servers'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - ai-models
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      - job_name: 'istio-mesh'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - istio-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: istio-proxy;http-monitoring
+      
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+    
+    # Rule files
+    ruleSelector:
+      matchLabels:
+        app: kube-prometheus-stack
+        release: prometheus
+    
+    # Service monitor selector
+    serviceMonitorSelector:
+      matchLabels:
+        app: kube-prometheus-stack
+        release: prometheus
+    
+    # Pod monitor selector
+    podMonitorSelector:
+      matchLabels:
+        app: kube-prometheus-stack
+        release: prometheus
+
+# Alertmanager configuration
+alertmanager:
+  alertmanagerSpec:
+    # Resource requests and limits
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "200m"
+    
+    # Storage configuration
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    
+    # Configuration
+    config:
+      global:
+        smtp_smarthost: 'localhost:587'
+        smtp_from: 'alerts@ai-model-serving.com'
+      
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'web.hook'
+        routes:
+          - match:
+              alertname: ModelHighErrorRate
+            receiver: 'model-alerts'
+          - match:
+              alertname: ModelHighLatency
+            receiver: 'model-alerts'
+          - match:
+              alertname: ModelDown
+            receiver: 'critical-alerts'
+          - match:
+              severity: critical
+            receiver: 'critical-alerts'
+      
+      receivers:
+        - name: 'web.hook'
+          webhook_configs:
+            - url: 'http://alertmanager-webhook:5000/webhook'
+        
+        - name: 'model-alerts'
+          slack_configs:
+            - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+              channel: '#model-alerts'
+              title: 'Model Alert: {{ .GroupLabels.alertname }}'
+              text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        
+        - name: 'critical-alerts'
+          slack_configs:
+            - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+              channel: '#critical-alerts'
+              title: 'CRITICAL: {{ .GroupLabels.alertname }}'
+              text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+          email_configs:
+            - to: 'oncall@ai-model-serving.com'
+              subject: 'CRITICAL Alert: {{ .GroupLabels.alertname }}'
+              body: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+# Grafana configuration
+grafana:
+  enabled: true
+  
+  # Admin credentials
+  adminPassword: "admin123"  # Change in production
+  
+  # Resource requests and limits
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+  
+  # Persistence
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 10Gi
+  
+  # Grafana configuration
+  grafana.ini:
+    server:
+      root_url: "http://grafana.ai-model-serving.local"
+    
+    security:
+      admin_user: admin
+      admin_password: admin123
+    
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+    
+    dashboards:
+      default_home_dashboard_path: /var/lib/grafana/dashboards/model-serving-overview.json
+  
+  # Data sources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://prometheus-kube-prometheus-prometheus:9090
+          access: proxy
+          isDefault: true
+        
+        - name: Loki
+          type: loki
+          url: http://loki:3100
+          access: proxy
+  
+  # Dashboard providers
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards
+  
+  # Dashboards
+  dashboards:
+    default:
+      model-serving-overview:
+        gnetId: 15141
+        revision: 1
+        datasource: Prometheus
+      
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      
+      istio-mesh:
+        gnetId: 7639
+        revision: 1
+        datasource: Prometheus
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+
+# kube-state-metrics
+kubeStateMetrics:
+  enabled: true
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+  
+  # Resource requests and limits
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+
+# Service monitors for additional services
+additionalServiceMonitors:
+  - name: model-servers
+    selector:
+      matchLabels:
+        app: model-server
+    endpoints:
+      - port: metrics
+        interval: 30s
+        path: /metrics
+
+# Pod monitors
+additionalPodMonitors:
+  - name: model-pods
+    selector:
+      matchLabels:
+        app: model-server
+    podMetricsEndpoints:
+      - port: metrics
+        interval: 30s
+        path: /metrics
+

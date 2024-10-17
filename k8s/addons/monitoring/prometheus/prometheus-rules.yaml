@@ -1,0 +1,320 @@
+# Prometheus Alerting Rules for AI Model Serving Platform
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: model-serving-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: model-serving.rules
+      interval: 30s
+      rules:
+        # Model availability alerts
+        - alert: ModelDown
+          expr: up{job="model-servers"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Model server {{ $labels.instance }} is down"
+            description: "Model server {{ $labels.instance }} has been down for more than 1 minute."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelDown"
+        
+        - alert: ModelHighErrorRate
+          expr: |
+            (
+              sum(rate(model_requests_total{status=~"5.."}[5m])) by (model_name) /
+              sum(rate(model_requests_total[5m])) by (model_name)
+            ) * 100 > 5
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has error rate of {{ $value }}% for more than 2 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighErrorRate"
+        
+        - alert: ModelCriticalErrorRate
+          expr: |
+            (
+              sum(rate(model_requests_total{status=~"5.."}[5m])) by (model_name) /
+              sum(rate(model_requests_total[5m])) by (model_name)
+            ) * 100 > 10
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical error rate for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has critical error rate of {{ $value }}% for more than 1 minute."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelCriticalErrorRate"
+        
+        # Latency alerts
+        - alert: ModelHighLatency
+          expr: |
+            histogram_quantile(0.95, 
+              sum(rate(model_inference_duration_seconds_bucket[5m])) by (model_name, le)
+            ) > 2
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High latency for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has P95 latency of {{ $value }}s for more than 3 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighLatency"
+        
+        - alert: ModelCriticalLatency
+          expr: |
+            histogram_quantile(0.95, 
+              sum(rate(model_inference_duration_seconds_bucket[5m])) by (model_name, le)
+            ) > 5
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical latency for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has critical P95 latency of {{ $value }}s for more than 1 minute."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelCriticalLatency"
+        
+        # Throughput alerts
+        - alert: ModelLowThroughput
+          expr: |
+            sum(rate(model_requests_total[5m])) by (model_name) < 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low throughput for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has low throughput of {{ $value }} req/s for more than 5 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelLowThroughput"
+        
+        # Resource usage alerts
+        - alert: ModelHighCPUUsage
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{pod=~".*model.*"}[5m])) by (pod) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage for model pod {{ $labels.pod }}"
+            description: "Model pod {{ $labels.pod }} has high CPU usage of {{ $value }} cores for more than 5 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighCPUUsage"
+        
+        - alert: ModelHighMemoryUsage
+          expr: |
+            (
+              container_memory_usage_bytes{pod=~".*model.*"} /
+              container_spec_memory_limit_bytes{pod=~".*model.*"}
+            ) * 100 > 80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage for model pod {{ $labels.pod }}"
+            description: "Model pod {{ $labels.pod }} has high memory usage of {{ $value }}% for more than 5 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighMemoryUsage"
+        
+        - alert: ModelCriticalMemoryUsage
+          expr: |
+            (
+              container_memory_usage_bytes{pod=~".*model.*"} /
+              container_spec_memory_limit_bytes{pod=~".*model.*"}
+            ) * 100 > 95
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical memory usage for model pod {{ $labels.pod }}"
+            description: "Model pod {{ $labels.pod }} has critical memory usage of {{ $value }}% for more than 1 minute."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelCriticalMemoryUsage"
+        
+        # GPU alerts (if applicable)
+        - alert: ModelHighGPUUsage
+          expr: nvidia_gpu_utilization_gpu > 90
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High GPU usage on {{ $labels.instance }}"
+            description: "GPU {{ $labels.gpu }} on {{ $labels.instance }} has usage of {{ $value }}% for more than 10 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighGPUUsage"
+        
+        - alert: ModelHighGPUMemory
+          expr: |
+            (nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes) * 100 > 85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High GPU memory usage on {{ $labels.instance }}"
+            description: "GPU {{ $labels.gpu }} on {{ $labels.instance }} has memory usage of {{ $value }}% for more than 5 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighGPUMemory"
+        
+        # Queue length alerts
+        - alert: ModelHighQueueLength
+          expr: model_queue_length > 100
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High queue length for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has queue length of {{ $value }} for more than 2 minutes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelHighQueueLength"
+        
+        # Canary deployment alerts
+        - alert: CanaryHighErrorRate
+          expr: |
+            (
+              sum(rate(model_requests_total{version="v2", status=~"5.."}[5m])) by (model_name) /
+              sum(rate(model_requests_total{version="v2"}[5m])) by (model_name)
+            ) * 100 > 2
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Canary deployment has high error rate for {{ $labels.model_name }}"
+            description: "Canary version of {{ $labels.model_name }} has error rate of {{ $value }}% for more than 1 minute."
+            runbook_url: "https://runbooks.ai-model-serving.com/CanaryHighErrorRate"
+        
+        - alert: CanaryLatencyRegression
+          expr: |
+            (
+              histogram_quantile(0.95, 
+                sum(rate(model_inference_duration_seconds_bucket{version="v2"}[5m])) by (model_name, le)
+              ) -
+              histogram_quantile(0.95, 
+                sum(rate(model_inference_duration_seconds_bucket{version="v1"}[5m])) by (model_name, le)
+              )
+            ) > 0.5
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Canary deployment has latency regression for {{ $labels.model_name }}"
+            description: "Canary version of {{ $labels.model_name }} has {{ $value }}s higher P95 latency than production."
+            runbook_url: "https://runbooks.ai-model-serving.com/CanaryLatencyRegression"
+        
+        # Drift detection alerts
+        - alert: ModelDriftDetected
+          expr: model_drift_score > 0.1
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Data drift detected for model {{ $labels.model_name }}"
+            description: "Model {{ $labels.model_name }} has drift score of {{ $value }} indicating potential data distribution changes."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelDriftDetected"
+        
+        - alert: ModelDriftDetectionFailed
+          expr: |
+            time() - model_drift_last_check_timestamp > 86400
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Drift detection failed for model {{ $labels.model_name }}"
+            description: "Drift detection for {{ $labels.model_name }} hasn't run successfully in the last 24 hours."
+            runbook_url: "https://runbooks.ai-model-serving.com/ModelDriftDetectionFailed"
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: infrastructure-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: infrastructure.rules
+      interval: 30s
+      rules:
+        # Kubernetes cluster alerts
+        - alert: KubernetesNodeDown
+          expr: up{job="kubernetes-nodes"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kubernetes node {{ $labels.instance }} is down"
+            description: "Kubernetes node {{ $labels.instance }} has been down for more than 5 minutes."
+        
+        - alert: KubernetesNodeHighCPU
+          expr: |
+            (
+              1 - (
+                avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (instance)
+              )
+            ) * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage on node {{ $labels.instance }}"
+            description: "Node {{ $labels.instance }} has CPU usage of {{ $value }}% for more than 10 minutes."
+        
+        - alert: KubernetesNodeHighMemory
+          expr: |
+            (
+              1 - (
+                node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+              )
+            ) * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage on node {{ $labels.instance }}"
+            description: "Node {{ $labels.instance }} has memory usage of {{ $value }}% for more than 10 minutes."
+        
+        - alert: KubernetesNodeDiskSpaceLow
+          expr: |
+            (
+              1 - (
+                node_filesystem_avail_bytes{fstype!="tmpfs"} / 
+                node_filesystem_size_bytes{fstype!="tmpfs"}
+              )
+            ) * 100 > 85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low disk space on node {{ $labels.instance }}"
+            description: "Node {{ $labels.instance }} has disk usage of {{ $value }}% on {{ $labels.mountpoint }}."
+        
+        # Pod alerts
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently."
+        
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{condition="false"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} is not ready"
+            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been not ready for more than 5 minutes."
+        
+        # Deployment alerts
+        - alert: DeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.deployment }} has mismatched replicas"
+            description: "Deployment {{ $labels.deployment }} in namespace {{ $labels.namespace }} has {{ $value }} available replicas, expected {{ $labels.spec_replicas }}."
+

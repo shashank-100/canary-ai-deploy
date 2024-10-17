@@ -1,0 +1,257 @@
+# GPU Device Plugin for GPU Fractionalization
+# Enables sharing GPUs across multiple model containers
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+  labels:
+    app: nvidia-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-device-plugin
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: nvidia-device-plugin
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: "system-node-critical"
+      containers:
+        - image: nvcr.io/nvidia/k8s-device-plugin:v0.14.1
+          name: nvidia-device-plugin-ctr
+          args: ["--fail-on-init-error=false", "--mig-strategy=single"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+      nodeSelector:
+        accelerator: nvidia
+
+---
+# GPU Sharing Device Plugin (Alternative approach)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-sharing-device-plugin
+  namespace: kube-system
+  labels:
+    app: gpu-sharing-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app: gpu-sharing-device-plugin
+  template:
+    metadata:
+      labels:
+        app: gpu-sharing-device-plugin
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: "system-node-critical"
+      containers:
+        - image: registry.cn-hangzhou.aliyuncs.com/acs/k8s-gpushare-plugin:v2.3.9
+          name: gpu-sharing-device-plugin
+          command:
+            - gpushare-device-plugin-v2
+            - -logtostderr
+            - -v=5
+            - -memory-unit=GiB
+          resources:
+            requests:
+              memory: "300Mi"
+              cpu: "100m"
+            limits:
+              memory: "300Mi"
+              cpu: "100m"
+          env:
+            - name: KUBECONFIG
+              value: /etc/kubernetes/kubelet.conf
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: dev
+              mountPath: /dev
+            - name: sys
+              mountPath: /sys
+            - name: config
+              mountPath: /etc/kubernetes
+              readOnly: true
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: config
+          hostPath:
+            path: /etc/kubernetes
+      nodeSelector:
+        accelerator: nvidia
+
+---
+# GPU Resource Quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gpu-quota
+  namespace: ai-models
+spec:
+  hard:
+    requests.nvidia.com/gpu: "8"
+    limits.nvidia.com/gpu: "8"
+    # For GPU sharing
+    aliyun.com/gpu-mem: "32"
+    aliyun.com/gpu-count: "8"
+
+---
+# GPU Node Affinity for Model Deployments
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-node-config
+  namespace: ai-models
+data:
+  gpu-node-selector.yaml: |
+    nodeSelector:
+      accelerator: nvidia
+      node.kubernetes.io/instance-type: g4dn.xlarge
+    
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+    
+    resources:
+      requests:
+        # Standard GPU allocation
+        nvidia.com/gpu: 1
+        # OR GPU sharing allocation
+        # aliyun.com/gpu-mem: 4  # 4GB GPU memory
+        # aliyun.com/gpu-count: 0.5  # 50% of GPU
+      limits:
+        nvidia.com/gpu: 1
+        # aliyun.com/gpu-mem: 4
+        # aliyun.com/gpu-count: 0.5
+
+---
+# GPU Monitoring ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gpu-metrics
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-dcgm-exporter
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+
+---
+# NVIDIA DCGM Exporter for GPU Metrics
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-dcgm-exporter
+  namespace: kube-system
+  labels:
+    app: nvidia-dcgm-exporter
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-dcgm-exporter
+  template:
+    metadata:
+      labels:
+        app: nvidia-dcgm-exporter
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: nvidia-dcgm-exporter
+          image: nvcr.io/nvidia/k8s/dcgm-exporter:3.1.7-3.1.4-ubuntu20.04
+          ports:
+            - name: metrics
+              containerPort: 9400
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+          env:
+            - name: DCGM_EXPORTER_LISTEN
+              value: ":9400"
+            - name: DCGM_EXPORTER_KUBERNETES
+              value: "true"
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+      nodeSelector:
+        accelerator: nvidia
+
+---
+# Service for DCGM Exporter
+apiVersion: v1
+kind: Service
+metadata:
+  name: nvidia-dcgm-exporter
+  namespace: kube-system
+  labels:
+    app: nvidia-dcgm-exporter
+spec:
+  selector:
+    app: nvidia-dcgm-exporter
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: 9400
+  type: ClusterIP
+

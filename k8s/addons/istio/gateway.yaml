@@ -1,0 +1,44 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ai-models-gateway
+  namespace: ai-models
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: ai-models-tls-secret
+    hosts:
+    - "*.ai-models.example.com"
+    - "ai-models.example.com"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ai-models-internal-gateway
+  namespace: ai-models
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 8080
+      name: http-internal
+      protocol: HTTP
+    hosts:
+    - "internal.ai-models.example.com"
+

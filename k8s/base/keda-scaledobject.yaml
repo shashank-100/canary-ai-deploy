@@ -1,0 +1,78 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: bert-ner-model-scaledobject
+  namespace: ai-models
+spec:
+  scaleTargetRef:
+    name: bert-ner-model
+  pollingInterval: 30
+  cooldownPeriod: 300
+  idleReplicaCount: 0
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+      metricName: http_requests_per_second
+      threshold: '5'
+      query: sum(rate(http_requests_total{job="bert-ner-model"}[2m]))
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: '70'
+  - type: memory
+    metadata:
+      type: Utilization
+      value: '80'
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: resnet-classifier-model-scaledobject
+  namespace: ai-models
+spec:
+  scaleTargetRef:
+    name: resnet-classifier-model
+  pollingInterval: 60
+  cooldownPeriod: 600
+  idleReplicaCount: 0
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
+      metricName: http_requests_per_second
+      threshold: '2'
+      query: sum(rate(http_requests_total{job="resnet-classifier-model"}[5m]))
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: '80'
+  - type: memory
+    metadata:
+      type: Utilization
+      value: '85'
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: prometheus-trigger-auth
+  namespace: ai-models
+spec:
+  secretTargetRef:
+  - parameter: bearerToken
+    name: prometheus-token
+    key: token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-token
+  namespace: ai-models
+type: Opaque
+stringData:
+  token: "your-prometheus-bearer-token-here"
+

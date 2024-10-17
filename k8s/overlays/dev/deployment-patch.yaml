@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bert-ner-model
+  namespace: ai-models
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: model-server
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        env:
+        - name: LOG_LEVEL
+          value: "DEBUG"
+        - name: ENABLE_DEBUG_ENDPOINTS
+          value: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resnet-classifier-model
+  namespace: ai-models
+spec:
+  replicas: 0
+  template:
+    spec:
+      containers:
+      - name: model-server
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+            nvidia.com/gpu: 0
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+            nvidia.com/gpu: 0
+        env:
+        - name: LOG_LEVEL
+          value: "DEBUG"
+        - name: ENABLE_DEBUG_ENDPOINTS
+          value: "true"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: ""
+

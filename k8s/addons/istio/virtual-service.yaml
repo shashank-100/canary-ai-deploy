@@ -1,0 +1,119 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: bert-ner-model-vs
+  namespace: ai-models
+spec:
+  hosts:
+  - bert-ner-model-service
+  http:
+  - match:
+    - headers:
+        canary:
+          exact: "true"
+    route:
+    - destination:
+        host: bert-ner-model-service
+        subset: v2
+      weight: 100
+  - route:
+    - destination:
+        host: bert-ner-model-service
+        subset: v1
+      weight: 95
+    - destination:
+        host: bert-ner-model-service
+        subset: v2
+      weight: 5
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: resnet-classifier-model-vs
+  namespace: ai-models
+spec:
+  hosts:
+  - resnet-classifier-model-service
+  http:
+  - match:
+    - headers:
+        canary:
+          exact: "true"
+    route:
+    - destination:
+        host: resnet-classifier-model-service
+        subset: v2
+      weight: 100
+  - route:
+    - destination:
+        host: resnet-classifier-model-service
+        subset: v1
+      weight: 100
+    timeout: 60s
+    retries:
+      attempts: 2
+      perTryTimeout: 30s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ai-models-gateway-vs
+  namespace: ai-models
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - ai-models-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /v1/bert-ner
+    rewrite:
+      uri: /predict
+    route:
+    - destination:
+        host: bert-ner-model-service
+        port:
+          number: 8000
+  - match:
+    - uri:
+        prefix: /v2/bert-ner
+    rewrite:
+      uri: /predict
+    route:
+    - destination:
+        host: bert-ner-model-service
+        port:
+          number: 8000
+        subset: v2
+  - match:
+    - uri:
+        prefix: /v1/resnet-classifier
+    rewrite:
+      uri: /predict
+    route:
+    - destination:
+        host: resnet-classifier-model-service
+        port:
+          number: 8000
+  - match:
+    - uri:
+        prefix: /v2/resnet-classifier
+    rewrite:
+      uri: /predict
+    route:
+    - destination:
+        host: resnet-classifier-model-service
+        port:
+          number: 8000
+        subset: v2
+

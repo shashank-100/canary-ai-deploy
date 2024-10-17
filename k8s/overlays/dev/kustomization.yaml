@@ -1,0 +1,52 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: ai-model-serving-dev
+
+namespace: ai-models
+
+resources:
+- ../../base
+- ../../addons/istio
+- ../../addons/ingress
+
+commonLabels:
+  environment: dev
+
+images:
+- name: your-ecr-repo/bert-ner-model
+  newTag: dev-latest
+- name: your-ecr-repo/resnet-classifier-model
+  newTag: dev-latest
+- name: your-ecr-repo/drift-detector
+  newTag: dev-latest
+
+patchesStrategicMerge:
+- deployment-patch.yaml
+- hpa-patch.yaml
+- ingress-patch.yaml
+
+configMapGenerator:
+- name: model-serving-config
+  behavior: merge
+  literals:
+  - LOG_LEVEL=DEBUG
+  - WORKERS=2
+  - MAX_REQUESTS=500
+  - ENABLE_SHADOW_MODE=false
+
+secretGenerator:
+- name: model-serving-secrets
+  behavior: merge
+  literals:
+  - DATABASE_URL=postgresql://dev_user:dev_pass@dev-postgres:5432/dev_modelmetadata
+  - REDIS_URL=redis://:dev_auth_token@dev-redis:6379
+  - AWS_S3_BUCKET=ai-model-serving-dev-model-artifacts
+
+replicas:
+- name: bert-ner-model
+  count: 1
+- name: resnet-classifier-model
+  count: 0
+

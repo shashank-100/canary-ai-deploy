@@ -1,0 +1,206 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bert-ner-model
+  namespace: ai-models
+  labels:
+    app: bert-ner-model
+    version: v1
+    model: bert-ner
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bert-ner-model
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: bert-ner-model
+        version: v1
+        model: bert-ner
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: model-serving-sa
+      imagePullSecrets:
+        - name: registry-credentials
+      containers:
+      - name: model-server
+        image: your-ecr-repo/bert-ner-model:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        env:
+        - name: MODEL_NAME
+          value: "bert-ner"
+        - name: MODEL_VERSION
+          value: "v1.0.0"
+        - name: PORT
+          value: "8000"
+        - name: METRICS_PORT
+          value: "8080"
+        envFrom:
+        - configMapRef:
+            name: model-serving-config
+        - secretRef:
+            name: model-serving-secrets
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: model-config
+          mountPath: /app/config
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+      volumes:
+      - name: model-config
+        configMap:
+          name: model-endpoints-config
+      - name: tmp-volume
+        emptyDir: {}
+      nodeSelector:
+        role: cpu-worker
+      tolerations:
+      - key: "role"
+        operator: "Equal"
+        value: "cpu-worker"
+        effect: "NoSchedule"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resnet-classifier-model
+  namespace: ai-models
+  labels:
+    app: resnet-classifier-model
+    version: v1
+    model: resnet-classifier
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resnet-classifier-model
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: resnet-classifier-model
+        version: v1
+        model: resnet-classifier
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: model-serving-sa
+      imagePullSecrets:
+        - name: registry-credentials
+      containers:
+      - name: model-server
+        image: your-ecr-repo/resnet-classifier-model:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        env:
+        - name: MODEL_NAME
+          value: "resnet-classifier"
+        - name: MODEL_VERSION
+          value: "v1.0.0"
+        - name: PORT
+          value: "8000"
+        - name: METRICS_PORT
+          value: "8080"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        envFrom:
+        - configMapRef:
+            name: model-serving-config
+        - secretRef:
+            name: model-serving-secrets
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+            nvidia.com/gpu: 1
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+            nvidia.com/gpu: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: model-config
+          mountPath: /app/config
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: shm-volume
+          mountPath: /dev/shm
+      volumes:
+      - name: model-config
+        configMap:
+          name: model-endpoints-config
+      - name: tmp-volume
+        emptyDir: {}
+      - name: shm-volume
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+      nodeSelector:
+        role: gpu-worker
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      - key: "role"
+        operator: "Equal"
+        value: "gpu-worker"
+        effect: "NoSchedule"
+

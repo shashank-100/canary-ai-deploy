@@ -1,0 +1,71 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: ai-model-serving-base
+
+resources:
+- namespace.yaml
+- serviceaccount.yaml
+- configmap.yaml
+- secret.yaml
+- deployment.yaml
+- service.yaml
+- hpa.yaml
+- keda-scaledobject.yaml
+- cronjob.yaml
+
+commonLabels:
+  app.kubernetes.io/name: ai-model-serving
+  app.kubernetes.io/part-of: ai-model-serving-platform
+
+images:
+- name: your-ecr-repo/bert-ner-model
+  newTag: latest
+- name: your-ecr-repo/resnet-classifier-model
+  newTag: latest
+- name: your-ecr-repo/drift-detector
+  newTag: latest
+
+configMapGenerator:
+- name: model-serving-config
+  literals:
+  - MODEL_CACHE_SIZE=1000
+  - MODEL_BATCH_SIZE=32
+  - MODEL_TIMEOUT=30
+  - PROMETHEUS_PORT=8080
+  - HEALTH_CHECK_INTERVAL=30
+  - LOG_LEVEL=INFO
+  - LOG_FORMAT=json
+  - WORKERS=4
+  - MAX_REQUESTS=1000
+  - MAX_REQUESTS_JITTER=100
+  - ENABLE_SHADOW_MODE=true
+  - ENABLE_DRIFT_DETECTION=true
+  - ENABLE_METRICS=true
+
+secretGenerator:
+- name: model-serving-secrets
+  literals:
+  - DATABASE_URL=postgresql://username:password@host:5432/dbname
+  - REDIS_URL=redis://:auth_token@host:6379
+  - AWS_S3_BUCKET=model-artifacts-bucket
+  - MODEL_API_KEY=your-model-api-key-here
+  - PROMETHEUS_TOKEN=your-prometheus-token
+  - ALERT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+
+patchesStrategicMerge:
+- |-
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: bert-ner-model
+    namespace: ai-models
+  spec:
+    template:
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+

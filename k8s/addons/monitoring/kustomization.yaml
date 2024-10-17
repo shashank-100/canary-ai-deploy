@@ -1,0 +1,64 @@
+# Kustomization for Monitoring Stack
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - grafana-dashboards.yaml
+  - prometheus-rules.yaml
+  - servicemonitor.yaml
+
+# Create monitoring namespace
+namespace: monitoring
+
+# Common labels
+commonLabels:
+  app.kubernetes.io/part-of: ai-model-serving-platform
+  app.kubernetes.io/component: monitoring
+
+# Patches for environment-specific configurations
+patchesStrategicMerge:
+  - |-
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: model-serving-dashboard
+      namespace: monitoring
+    data:
+      model-serving-overview.json: |
+        # Environment-specific dashboard configuration can be added here
+
+# Configuration for different environments
+configurations:
+  - name: dev
+    patches:
+      - target:
+          kind: PrometheusRule
+          name: model-serving-alerts
+        patch: |-
+          - op: replace
+            path: /spec/groups/0/rules/0/for
+            value: "30s"  # Shorter alert duration for dev
+  
+  - name: staging
+    patches:
+      - target:
+          kind: PrometheusRule
+          name: model-serving-alerts
+        patch: |-
+          - op: replace
+            path: /spec/groups/0/rules/0/for
+            value: "1m"  # Medium alert duration for staging
+  
+  - name: prod
+    patches:
+      - target:
+          kind: PrometheusRule
+          name: model-serving-alerts
+        patch: |-
+          - op: replace
+            path: /spec/groups/0/rules/0/for
+            value: "2m"  # Longer alert duration for prod
+
